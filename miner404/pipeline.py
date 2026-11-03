@@ -505,6 +505,8 @@ class StagePlan:
     measured: bool = False
     # Fit the object's real outline, so rotated parts do not shrink it.
     outline_fit: bool = False
+    # The same fit, applied only to the finished module: the chain runs without it.
+    outline_fit_last: bool = False
 
 
 @dataclass
@@ -934,7 +936,20 @@ class Pipeline:
                     survivors[0], searched = self.posed_by_search(pool, survivors[0]), True
             winner = self.select(pool, survivors, set(), 1, FINAL_SELECT_ID)[0]
             self.best_so_far = winner.source
-            return (self.posed(pool, winner) if plan.pose and not plan.measured else winner).source
+            final = self.posed(pool, winner) if plan.pose and not plan.measured else winner
+            return self.fitted_last(winner, plan) if plan.outline_fit_last and final is winner else final.source
+
+    def fitted_last(self, winner: Candidate, plan: StagePlan) -> str:
+        """The finished module with the outline fit, or as it is if the fit is rejected. A module the pose stage turned keeps
+        its plain fit, because the turn is written around the wrapped source."""
+        if not winner.raw:
+            return winner.source
+        source = normalize(winner.raw, chain_wrapper(plan.fill, plan.glow, True))
+        try:
+            self.renderer.render(source, FRONT_JUDGE)
+        except RenderRejected:
+            return winner.source
+        return source
 
     def photo_brief(self, pool: ThreadPoolExecutor) -> str:
         """What the model must get right, written once from the photo and shown to every draft and rewrite."""
